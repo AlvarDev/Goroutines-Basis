@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -21,6 +22,7 @@ func main() {
 	r.HandleFunc("/", rootHandler).Methods("GET")
 	r.HandleFunc("/serial", serialHandler).Methods("GET")
 	r.HandleFunc("/go", goHandler).Methods("GET")
+	r.HandleFunc("/go-array", goArrayHandler).Methods("POST")
 
 	rootLogger := zerolog.New(os.Stdout)
 	middleware := crzerolog.InjectLogger(&rootLogger)
@@ -113,4 +115,36 @@ func makeRequestWithChannel(url string, c chan string) {
 	}
 
 	c <- string(body)
+}
+
+func goArrayHandler(w http.ResponseWriter, r *http.Request) {
+	logger := log.Ctx(r.Context())
+	logger.Info().Msg("Request on Go-Array")
+
+	// Getting JSON request
+	gar := GoArrayRequest{}
+	err := json.NewDecoder(r.Body).Decode(&gar)
+	if err != nil {
+		logger.Error().Err(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Goroutines
+	c := make(chan string)
+	for _, url := range gar.URLs {
+		go makeRequestWithChannel(url, c)
+	}
+	for _, _ = range gar.URLs {
+		fmt.Println(<-c)
+	}
+
+	// Response
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
+}
+
+// GoArrayRequest body JSON
+type GoArrayRequest struct {
+	URLs []string `json:"urls"`
 }
